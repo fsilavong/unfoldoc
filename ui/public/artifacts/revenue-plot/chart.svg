@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" fill="none">
+  <rect width="840" height="420" fill="#0B1119"/>
+  <path d="M72 344L204 286L336 238L468 186L600 140L732 88" stroke="#F1B561" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="72" cy="344" r="8" fill="#F1B561"/>
+  <circle cx="204" cy="286" r="8" fill="#F1B561"/>
+  <circle cx="336" cy="238" r="8" fill="#F1B561"/>
+  <circle cx="468" cy="186" r="8" fill="#F1B561"/>
+  <circle cx="600" cy="140" r="8" fill="#F1B561"/>
+  <circle cx="732" cy="88" r="8" fill="#F1B561"/>
+  <text x="72" y="382" fill="#AEB8C8" font-size="18">Jan</text>
+  <text x="204" y="382" fill="#AEB8C8" font-size="18">Feb</text>
+  <text x="336" y="382" fill="#AEB8C8" font-size="18">Mar</text>
+  <text x="468" y="382" fill="#AEB8C8" font-size="18">Apr</text>
+  <text x="600" y="382" fill="#AEB8C8" font-size="18">May</text>
+  <text x="732" y="382" fill="#AEB8C8" font-size="18">Jun</text>
+  <text x="72" y="52" fill="#F5F7FB" font-size="28" font-family="Georgia">Revenue Trend</text>
+</svg>

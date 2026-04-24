@@ -1,0 +1,17 @@
+{
+  "documents": [
+    {
+      "id": "hf-digest",
+      "title": "Hugging Face Papers Digest",
+      "description": "Source markdown document with an orbit block that loads a digest artifact.",
+      "source_url": "https://huggingface.co/papers",
+      "artifact_path": "docs/hf-digest.md"
+    },
+    {
+      "id": "revenue-plot",
+      "title": "Revenue Plot Demo",
+      "description": "Source markdown document with an orbit block that loads a chart artifact.",
+      "artifact_path": "docs/revenue-plot.md"
+    }
+  ]
+}
