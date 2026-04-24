@@ -83,6 +83,81 @@ npm install
 npm run dev
 ```
 
+## Use As A Skill
+
+Agents can consume the writer skill directly from GitHub.
+
+Raw skill file:
+
+```text
+https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md
+```
+
+Reference example file:
+
+```text
+https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/references/example_bundle.md
+```
+
+### Minimal path
+
+For most agents, loading just `SKILL.md` is enough. It is written to be self-contained.
+
+### Deep Agents
+
+```python
+from urllib.request import urlopen
+from deepagents import create_deep_agent
+from deepagents.backends.utils import create_file_data
+
+skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md"
+with urlopen(skill_url) as response:
+    skill_content = response.read().decode("utf-8")
+
+skills_files = {
+    "/skills/write-unfoldoc/SKILL.md": create_file_data(skill_content)
+}
+
+agent = create_deep_agent(
+    model="openai:gpt-5.4",
+    skills=["/skills/"],
+)
+```
+
+### Enhanced path
+
+If you want to give the agent one worked example as extra context, also load:
+
+```text
+https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/references/example_bundle.md
+```
+
+and mount it at:
+
+```text
+/skills/write-unfoldoc/references/example_bundle.md
+```
+
+### Google ADK
+
+Google ADK does not use the same mounted skill filesystem pattern. The equivalent approach is to load the skill markdown and include it in the agent instruction.
+
+```python
+from urllib.request import urlopen
+from google.adk.agents import Agent
+
+skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md"
+with urlopen(skill_url) as response:
+    skill_content = response.read().decode("utf-8")
+
+root_agent = Agent(
+    model="gemini-2.5-flash",
+    name="unfoldoc_writer",
+    description="Writes output in the Unfoldoc format.",
+    instruction=f"""Follow this writing contract exactly:\n\n{skill_content}""",
+)
+```
+
 ## Repository Layout
 
 ```text

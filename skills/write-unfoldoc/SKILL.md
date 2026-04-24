@@ -88,6 +88,19 @@ Unfoldoc should decide how to open the linked file in the drawer.
 
 For RAG-style outputs, the citation file is the primary provenance object, not a generic footnote. Use markdown for prose chunks and JSON for structured chunk objects.
 
-## When to read references
+## Minimal example
 
-- For a complete worked example, read `references/example_bundle.md`
+```md
+# Weekly Digest
+
+Grounded latent reasoning is the strongest theme in this batch [1](./citations/1.md).
+
+The summary was generated from [this prompt](./sources/prompt.txt).
+```
+
+With:
+
+- `citations/1.md`
+- `sources/prompt.txt`
+
+That is already a valid Unfoldoc bundle.
