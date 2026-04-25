@@ -740,8 +740,7 @@ export default function App() {
             </svg>
           </button>
           <div className="mobile-topbar-title">
-            <img className="brand-mark brand-mark-mobile" src="/logo-128.png" alt="" aria-hidden="true" />
-            <span>{selectedDoc.folder_parts[selectedDoc.folder_parts.length - 1]}</span>
+            <span className="mobile-wordmark" aria-label="Unfoldoc">unfoldoc</span>
           </div>
         </div>
         <div className="viewer-shell">
