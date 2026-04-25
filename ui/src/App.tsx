@@ -665,7 +665,7 @@ export default function App() {
             className="setup-input"
             value={sourceInput}
             onChange={(event) => setSourceInput(event.target.value)}
-            placeholder="/Users/fran/projects/orbit/data/unfoldoc or https://github.com/fsilavong/unfoldoc"
+            placeholder="/Users/fran/projects/orbit/data/daily-digest or https://github.com/fsilavong/unfoldoc"
           />
           <button type="button" className="setup-btn" onClick={() => void submitSource()} disabled={submittingSource}>
             {submittingSource ? "Loading…" : "Load source"}
