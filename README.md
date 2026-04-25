@@ -1,5 +1,9 @@
 # Unfoldoc
 
+<div style="text-align: center;">
+  <img title="a title" alt="Alt text" src="./ui/public/logo.png" style="width: 300px;">
+</div>
+
 Unfoldoc is a markdown-native document format and reader for generated knowledge artifacts.
 
 The goal is simple:
@@ -7,6 +11,7 @@ The goal is simple:
 - keep the main document as normal markdown
 - keep provenance in linked files instead of inline clutter
 - let the UI open citations, sources, code, HTML, images, and JSON cleanly
+- let the UI render bundle-local audio players from markdown when a bundle includes narration
 
 Unfoldoc works well for agent-written research digests, RAG outputs, and source-backed notes.
 
@@ -39,6 +44,15 @@ The summary was generated from [this prompt](./sources/prompt.txt) and [this scr
 
 The linked files carry the supporting material. Unfoldoc decides how to render them in the drawer.
 
+If a bundle includes narration audio, `content.md` can embed it directly:
+
+~~~md
+```audio
+src: ./assets/narration.mp3
+title: Listen
+```
+~~~
+
 ## Core Ideas
 
 - `content.md` is the primary artifact
@@ -46,6 +60,7 @@ The linked files carry the supporting material. Unfoldoc decides how to render t
 - citation files can be markdown or JSON
 - one citation file should usually represent one retrieved chunk
 - source files, prompts, code, and assets are normal local files
+- narration audio can live in `assets/` and be embedded with a fenced `audio` block
 - the reader upgrades the links; the writing format stays plain markdown
 
 ## Optional Source Doc
@@ -90,13 +105,13 @@ Agents can consume the writer skill directly from GitHub.
 Raw skill file:
 
 ```text
-https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md
+https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/SKILL.md
 ```
 
 Reference example file:
 
 ```text
-https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/references/example_bundle.md
+https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/references/example_bundle.md
 ```
 
 ### Minimal path
@@ -110,7 +125,7 @@ from urllib.request import urlopen
 from deepagents import create_deep_agent
 from deepagents.backends.utils import create_file_data
 
-skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md"
+skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/SKILL.md"
 with urlopen(skill_url) as response:
     skill_content = response.read().decode("utf-8")
 
@@ -129,7 +144,7 @@ agent = create_deep_agent(
 If you want to give the agent one worked example as extra context, also load:
 
 ```text
-https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/references/example_bundle.md
+https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/references/example_bundle.md
 ```
 
 and mount it at:
@@ -146,7 +161,7 @@ Google ADK does not use the same mounted skill filesystem pattern. The equivalen
 from urllib.request import urlopen
 from google.adk.agents import Agent
 
-skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/refs/heads/main/skills/write-unfoldoc/SKILL.md"
+skill_url = "https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/SKILL.md"
 with urlopen(skill_url) as response:
     skill_content = response.read().decode("utf-8")
 

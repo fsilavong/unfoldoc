@@ -7,6 +7,7 @@ It:
 - loads source markdown docs
 - expands optional `orbit` blocks into linked artifacts
 - renders markdown as the main reading surface
+- renders fenced `audio` blocks as bundle-local audio players
 - opens citations, source files, JSON, HTML, and images in the drawer
 
 ## Run
