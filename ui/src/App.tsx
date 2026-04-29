@@ -313,7 +313,14 @@ function buildDocumentTree(documents: DocumentRecord[]): TreeNode[] {
 
 function defaultDocumentId(documents: DocumentRecord[]): string {
   return [...documents]
-    .sort((a, b) => a.folder_parts.length - b.folder_parts.length || a.id.localeCompare(b.id))[0]?.id ?? "";
+    .sort((a, b) => {
+      if (a.date && b.date && a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      if (a.date && !b.date) return -1;
+      if (!a.date && b.date) return 1;
+      return a.folder_parts.length - b.folder_parts.length || a.id.localeCompare(b.id);
+    })[0]?.id ?? "";
 }
 
 const SPEEDS = [1, 1.5, 2] as const;
