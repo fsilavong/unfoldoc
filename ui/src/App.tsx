@@ -486,7 +486,7 @@ export default function App() {
     setMobileNavOpen(false);
   }
 
-  async function openLinkedResource(href: string, label: string) {
+  async function openLinkedResource(href: string, label: string, basePath: string) {
     if (!selectedDoc) return;
 
     if (/^https?:\/\//.test(href)) {
@@ -504,7 +504,7 @@ export default function App() {
       return;
     }
 
-    const resolvedPath = resolveRelativePath(selectedDoc.artifact_path, href);
+    const resolvedPath = resolveRelativePath(basePath, href);
     if (drawer.kind !== "closed" && drawer.sourcePath === resolvedPath) {
       setDrawer({ kind: "closed" });
       return;
@@ -625,7 +625,7 @@ export default function App() {
                   <button
                     type="button"
                     className="citation"
-                    onClick={() => href && void openLinkedResource(href, label)}
+                    onClick={() => href && void openLinkedResource(href, label, sourcePath)}
                   >
                     {label.replace(/[^\d]/g, "") || label}
                   </button>
@@ -636,7 +636,7 @@ export default function App() {
               <button
                 type="button"
                 className="md-link-button"
-                onClick={() => href && void openLinkedResource(href, label)}
+                onClick={() => href && void openLinkedResource(href, label, sourcePath)}
                 title={label}
               >
                 {children}
