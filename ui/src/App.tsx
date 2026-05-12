@@ -140,6 +140,33 @@ function rawUrlForPath(basePath: string, href: string): string {
   return apiRaw(resolveRelativePath(basePath, href));
 }
 
+function isNumericCitationLabel(label: string): boolean {
+  return /^\s*\d+\s*$/.test(label);
+}
+
+function isLocalResourceLink(href: string): boolean {
+  return !href.startsWith("http://") && !href.startsWith("https://") && !href.startsWith("#");
+}
+
+function isCitationHref(href: string, label: string): boolean {
+  if (!isLocalResourceLink(href)) return false;
+  const ext = extensionFromPath(href);
+  if (!["md", "json"].includes(ext)) return false;
+  return href.includes("citations/") || isNumericCitationLabel(label);
+}
+
+function countCitationLinks(markdown: string): number {
+  const matches = markdown.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g);
+  let count = 0;
+  for (const match of matches) {
+    const [, label, href] = match;
+    if (isCitationHref(href, label)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function tryParseJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -496,8 +523,7 @@ export default function App() {
   }, [selectedDoc]);
 
   const localCitationCount = useMemo(() => {
-    const matches = markdown.match(/\]\((?:\.\/)?[^)]*citations\/[^)]+\.(?:md|json)\)/g);
-    return matches ? matches.length : 0;
+    return countCitationLinks(markdown);
   }, [markdown]);
 
   async function submitSource() {
@@ -673,8 +699,7 @@ export default function App() {
             const label = Array.isArray(children) ? children.join("") : String(children);
             const isLocalCitation =
               typeof href === "string" &&
-              href.includes("citations/") &&
-              ["md", "json"].includes(extensionFromPath(href));
+              isCitationHref(href, label);
             const isBarExternalUrl =
               typeof href === "string" &&
               (href.startsWith("http://") || href.startsWith("https://")) &&
