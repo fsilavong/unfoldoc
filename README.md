@@ -15,6 +15,30 @@ The goal is simple:
 
 Unfoldoc works well for agent-written research digests, RAG outputs, and source-backed notes.
 
+## Install
+
+If you want an agent to write Unfoldoc bundles, install the `write-unfoldoc` skill early.
+
+Codex:
+
+```bash
+mkdir -p ~/.codex/skills/write-unfoldoc
+curl -fsSL https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/SKILL.md -o ~/.codex/skills/write-unfoldoc/SKILL.md
+```
+
+Claude:
+
+```bash
+mkdir -p ~/.claude/skills/write-unfoldoc
+curl -fsSL https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/SKILL.md -o ~/.claude/skills/write-unfoldoc/SKILL.md
+```
+
+If you want one worked example too, also load:
+
+```text
+https://raw.githubusercontent.com/fsilavong/unfoldoc/main/skills/write-unfoldoc/references/example_bundle.md
+```
+
 ## What It Looks Like
 
 An Unfoldoc bundle is just a folder:

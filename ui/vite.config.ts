@@ -8,7 +8,7 @@ import { VitePWA } from "vite-plugin-pwa";
 
 type SourceConfig = {
   input: string;
-  type: "local" | "github";
+  type: "github";
   label: string;
   rootPath: string;
   branch?: string;
@@ -38,7 +38,6 @@ function slugify(value: string): string {
 function looksLikeGitHub(input: string): boolean {
   return (
     /^https?:\/\/github\.com\//.test(input) ||
-    /^git@github\.com:/.test(input) ||
     /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input)
   );
 }
@@ -51,15 +50,10 @@ function parseGithubInput(input: string): { cloneUrl: string; label: string; bra
     };
   }
 
-  const sshMatch = input.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (sshMatch) {
-    return {
-      cloneUrl: input.endsWith(".git") ? input : `${input}.git`,
-      label: `${sshMatch[1]}/${sshMatch[2]}`,
-    };
-  }
-
   const url = new URL(input);
+  if (url.hostname !== "github.com") {
+    throw new Error("Only github.com repository URLs are allowed");
+  }
   const parts = url.pathname.replace(/^\/+|\/+$/g, "").split("/");
   if (parts.length < 2) {
     throw new Error("Invalid GitHub URL");
@@ -95,7 +89,16 @@ function ensureGitHubCheckout(cacheDir: string, input: string): SourceConfig {
     }
     args.push(parsed.cloneUrl, repoDir);
     execFileSync("git", args, { stdio: "pipe" });
-  }
+  } else {
+    if (parsed.branch) {
+      execFileSync("git", ["-C", repoDir, "fetch", "--depth", "1", "origin", parsed.branch], { stdio: "pipe" });
+      execFileSync("git", ["-C", repoDir, "checkout", "-B", parsed.branch, "FETCH_HEAD"], { stdio: "pipe" });
+    } else {
+      execFileSync("git", ["-C", repoDir, "fetch", "--depth", "1", "origin"], { stdio: "pipe" });
+      execFileSync("git", ["-C", repoDir, "reset", "--hard", "FETCH_HEAD"], { stdio: "pipe" });
+      execFileSync("git", ["-C", repoDir, "clean", "-fd"], { stdio: "pipe" });
+    }
+  } 
 
   const rootPath = parsed.subpath ? path.join(repoDir, parsed.subpath) : repoDir;
   if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
@@ -112,28 +115,15 @@ function ensureGitHubCheckout(cacheDir: string, input: string): SourceConfig {
   };
 }
 
-function resolveLocalSource(repoRoot: string, input: string): SourceConfig {
-  const rootPath = path.resolve(repoRoot, input);
-  if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
-    throw new Error(`Local folder not found: ${rootPath}`);
-  }
-  return {
-    input,
-    type: "local",
-    label: path.basename(rootPath) || rootPath,
-    rootPath,
-  };
-}
-
-function detectSource(repoRoot: string, cacheDir: string, input: string): SourceConfig {
+function detectSource(cacheDir: string, input: string): SourceConfig {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new Error("Source is required");
   }
-  if (looksLikeGitHub(trimmed)) {
-    return ensureGitHubCheckout(cacheDir, trimmed);
+  if (!looksLikeGitHub(trimmed)) {
+    throw new Error("Only GitHub repositories are supported");
   }
-  return resolveLocalSource(repoRoot, trimmed);
+  return ensureGitHubCheckout(cacheDir, trimmed);
 }
 
 function readState(statePath: string): SourceConfig | null {
@@ -141,6 +131,16 @@ function readState(statePath: string): SourceConfig | null {
     return null;
   }
   return JSON.parse(fs.readFileSync(statePath, "utf-8")) as SourceConfig;
+}
+
+function refreshSource(cacheDir: string, source: SourceConfig | null): SourceConfig | null {
+  if (!source) {
+    return null;
+  }
+  if (source.type === "github") {
+    return ensureGitHubCheckout(cacheDir, source.input);
+  }
+  return source;
 }
 
 function writeState(statePath: string, value: SourceConfig): void {
@@ -216,6 +216,7 @@ function contentTypeFor(filePath: string): string {
 }
 
 export default defineConfig({
+  publicDir: "static",
   plugins: [
     react(),
     VitePWA({
@@ -260,22 +261,55 @@ export default defineConfig({
         const repoRoot = path.resolve(__dirname, "..", "..");
         const statePath = path.join(repoRoot, ".unfoldoc-source.json");
         const cacheDir = path.join(repoRoot, ".unfoldoc-cache");
+        const fixedSourceInput = process.env.UNFOLDOC_SOURCE_URL?.trim() || "";
+        const allowSourceChange = process.env.UNFOLDOC_ALLOW_SOURCE_CHANGE === "true";
+        let fixedSourceCache: SourceConfig | null | undefined;
+
+        function readFixedSource(): SourceConfig | null {
+          if (!fixedSourceInput) {
+            return null;
+          }
+          if (fixedSourceCache === undefined) {
+            fixedSourceCache = detectSource(cacheDir, fixedSourceInput);
+          }
+          return fixedSourceCache;
+        }
+
+        function readEffectiveState(): SourceConfig | null {
+          if (fixedSourceInput) {
+            return readFixedSource();
+          }
+          return readState(statePath);
+        }
 
         server.middlewares.use("/api/source", async (req, res) => {
           try {
             if (req.method === "GET") {
-              const source = readState(statePath);
+              const source = refreshSource(cacheDir, readEffectiveState());
+              if (fixedSourceInput && source) {
+                fixedSourceCache = source;
+              }
+              if (source && !fixedSourceInput) {
+                writeState(statePath, source);
+              }
               res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ source }, null, 2));
+              res.end(JSON.stringify({ source, read_only: Boolean(fixedSourceInput) || !allowSourceChange }, null, 2));
+              return;
+            }
+
+            if (fixedSourceInput || !allowSourceChange) {
+              res.statusCode = 403;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: "Source changes are disabled in production" }));
               return;
             }
 
             if (req.method === "POST") {
               const body = await readJsonBody(req);
-              const source = detectSource(repoRoot, cacheDir, String(body.input ?? ""));
+              const source = detectSource(cacheDir, String(body.input ?? ""));
               writeState(statePath, source);
               res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ source }, null, 2));
+              res.end(JSON.stringify({ source, read_only: false }, null, 2));
               return;
             }
 
@@ -299,7 +333,7 @@ export default defineConfig({
 
         server.middlewares.use("/api/documents", (req, res) => {
           try {
-            const source = readState(statePath);
+            const source = readEffectiveState();
             if (!source) {
               res.setHeader("Content-Type", "application/json; charset=utf-8");
               res.end(JSON.stringify({ source: null, documents: [] }, null, 2));
@@ -318,7 +352,7 @@ export default defineConfig({
 
         server.middlewares.use("/api/file", (req, res) => {
           try {
-            const source = readState(statePath);
+            const source = readEffectiveState();
             if (!source) {
               res.statusCode = 404;
               res.end("No source configured");
@@ -350,7 +384,7 @@ export default defineConfig({
 
         server.middlewares.use("/api/raw", (req, res) => {
           try {
-            const source = readState(statePath);
+            const source = readEffectiveState();
             if (!source) {
               res.statusCode = 404;
               res.end("No source configured");

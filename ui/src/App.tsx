@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 
 type SourceConfig = {
   input: string;
-  type: "local" | "github";
+  type: "github";
   label: string;
   rootPath: string;
   branch?: string;
@@ -21,6 +21,8 @@ type DocumentRecord = {
 
 type DrawerState =
   | { kind: "closed" }
+  | { kind: "loading"; title: string; sourcePath: string }
+  | { kind: "error"; title: string; message: string; sourcePath: string }
   | { kind: "markdown"; title: string; markdown: string; sourcePath: string }
   | { kind: "json"; title: string; value: unknown; sourcePath: string }
   | { kind: "code"; title: string; language: string; text: string; sourcePath: string }
@@ -33,6 +35,9 @@ type AudioBlockSpec = {
   title: string;
   caption?: string;
 };
+
+const DEFAULT_SOURCE_URL = "https://github.com/fsilavong/daily-digest";
+const UNFOLDOC_REPO_URL = "https://github.com/fsilavong/unfoldoc";
 
 type TreeNode = {
   id: string;
@@ -95,9 +100,26 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+function recoverBundleRelativePath(path: string): string | null {
+  const normalized = path.replace(/\\/g, "/");
+  const dailyDigestMatch = normalized.match(/(?:^|\/)data\/daily-digest\/(\d{4}-\d{2}-\d{2}\/.+)$/);
+  if (dailyDigestMatch) {
+    return normalizePath(dailyDigestMatch[1]);
+  }
+  const datedBundleMatch = normalized.match(/(?:^|\/)(\d{4}-\d{2}-\d{2}\/[^?#]+)$/);
+  if (datedBundleMatch) {
+    return normalizePath(datedBundleMatch[1]);
+  }
+  return null;
+}
+
 function resolveRelativePath(baseFilePath: string, href: string): string {
   if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("#")) {
     return href;
+  }
+  const recoveredPath = recoverBundleRelativePath(href);
+  if (recoveredPath) {
+    return recoveredPath;
   }
   const baseDir = baseFilePath.split("/").slice(0, -1).join("/");
   return normalizePath(`${baseDir}/${href}`);
@@ -124,6 +146,14 @@ function tryParseJson(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+async function readResponseError(response: Response): Promise<string> {
+  const text = (await response.text()).trim();
+  if (!text) {
+    return `Request failed: ${response.status}`;
+  }
+  return text;
 }
 
 function absolutizeMarkdownLinks(markdown: string, artifactPath: string): string {
@@ -362,6 +392,10 @@ export default function App() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
   const [markdown, setMarkdown] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [initializing, setInitializing] = useState<boolean>(true);
+  const [documentsLoading, setDocumentsLoading] = useState<boolean>(false);
+  const [loadingStatus, setLoadingStatus] = useState<string>("Checking saved source...");
+  const [sourceReadOnly, setSourceReadOnly] = useState<boolean>(false);
   const [sourceConfig, setSourceConfig] = useState<SourceConfig | null>(null);
   const [sourceInput, setSourceInput] = useState<string>("");
   const [submittingSource, setSubmittingSource] = useState<boolean>(false);
@@ -376,22 +410,35 @@ export default function App() {
   }, [light]);
 
   async function loadDocuments() {
-    const response = await fetch("/api/documents");
-    if (!response.ok) {
-      throw new Error(`Failed to load documents: ${response.status}`);
-    }
-    const data = await response.json();
-    setSourceConfig(data.source ?? null);
-    setDocuments(data.documents ?? []);
-    setSelectedDocumentId((current) => {
-      if (current && (data.documents ?? []).some((doc: DocumentRecord) => doc.id === current)) {
-        return current;
+    setLoadingStatus("Scanning bundles...");
+    setDocumentsLoading(true);
+    try {
+      const response = await fetch("/api/documents");
+      if (!response.ok) {
+        throw new Error(`Failed to load documents: ${response.status}`);
       }
-      return defaultDocumentId(data.documents ?? []);
-    });
+      const data = await response.json();
+      setSourceReadOnly(Boolean(data.read_only));
+      setSourceConfig(data.source ?? null);
+      setDocuments(data.documents ?? []);
+      if ((data.documents ?? []).length > 0) {
+        setLoadingStatus("Opening latest digest...");
+      }
+      setSelectedDocumentId((current) => {
+        if (current && (data.documents ?? []).some((doc: DocumentRecord) => doc.id === current)) {
+          return current;
+        }
+        return defaultDocumentId(data.documents ?? []);
+      });
+    } finally {
+      setDocumentsLoading(false);
+    }
   }
 
   useEffect(() => {
+    if (!initializing) return;
+
+    setLoadingStatus("Checking saved source...");
     fetch("/api/source")
       .then((response) => {
         if (!response.ok) {
@@ -399,14 +446,17 @@ export default function App() {
         }
         return response.json();
       })
-      .then((data) => {
+      .then(async (data) => {
+        setSourceReadOnly(Boolean(data.read_only));
         setSourceConfig(data.source ?? null);
         if (data.source) {
-          return loadDocuments();
+          setLoadingStatus(data.source.type === "github" ? "Refreshing from GitHub..." : "Opening source...");
+          await loadDocuments();
         }
       })
-      .catch((err: Error) => setError(err.message));
-  }, []);
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setInitializing(false));
+  }, [initializing]);
 
   const selectedDoc = documents.find((item) => item.id === selectedDocumentId) ?? null;
   const treeNodes = useMemo(() => buildDocumentTree(documents), [documents]);
@@ -452,17 +502,22 @@ export default function App() {
 
   async function submitSource() {
     setSubmittingSource(true);
+    setDocumentsLoading(true);
     setError("");
     try {
+      const input = sourceInput.trim() || DEFAULT_SOURCE_URL;
+      setLoadingStatus("Cloning latest from GitHub...");
       const response = await fetch("/api/source", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: sourceInput }),
+        body: JSON.stringify({ input }),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || `Failed to save source: ${response.status}`);
       }
+      setSourceReadOnly(Boolean(data.read_only));
+      setSourceInput(input);
       setSourceConfig(data.source);
       setDocuments([]);
       setSelectedDocumentId("");
@@ -471,6 +526,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      setDocumentsLoading(false);
       setSubmittingSource(false);
     }
   }
@@ -479,6 +535,8 @@ export default function App() {
     setError("");
     await fetch("/api/source", { method: "DELETE" });
     setSourceConfig(null);
+    setSourceReadOnly(false);
+    setSourceInput("");
     setDocuments([]);
     setSelectedDocumentId("");
     setMarkdown("");
@@ -527,23 +585,37 @@ export default function App() {
     }
 
     if (isTextExtension(ext)) {
-      const response = await fetch(apiFile(resolvedPath));
-      const text = await response.text();
-      if (ext === "md") {
-        setDrawer({ kind: "markdown", title: label || href, markdown: text, sourcePath: resolvedPath });
-        return;
+      const title = label || href;
+      setDrawer({ kind: "loading", title, sourcePath: resolvedPath });
+      try {
+        const response = await fetch(apiFile(resolvedPath));
+        if (!response.ok) {
+          throw new Error(await readResponseError(response));
+        }
+        const text = await response.text();
+        if (ext === "md") {
+          setDrawer({ kind: "markdown", title, markdown: text, sourcePath: resolvedPath });
+          return;
+        }
+        if (ext === "json") {
+          setDrawer({ kind: "json", title, value: tryParseJson(text), sourcePath: resolvedPath });
+          return;
+        }
+        setDrawer({
+          kind: "code",
+          title,
+          language: languageFromExtension(ext),
+          text,
+          sourcePath: resolvedPath,
+        });
+      } catch (error) {
+        setDrawer({
+          kind: "error",
+          title,
+          message: error instanceof Error ? error.message : String(error),
+          sourcePath: resolvedPath,
+        });
       }
-      if (ext === "json") {
-        setDrawer({ kind: "json", title: label || href, value: tryParseJson(text), sourcePath: resolvedPath });
-        return;
-      }
-      setDrawer({
-        kind: "code",
-        title: label || href,
-        language: languageFromExtension(ext),
-        text,
-        sourcePath: resolvedPath,
-      });
       return;
     }
 
@@ -657,26 +729,74 @@ export default function App() {
     );
   }
 
+  function renderLoadingScreen() {
+    return (
+      <main className="loading-shell">
+        <section className="loading-card">
+          <div className="loading-brand">
+            <div className="loading-spinner" aria-hidden="true">
+              <span className="loading-spinner-square loading-spinner-square--outer" />
+              <span className="loading-spinner-square loading-spinner-square--inner" />
+            </div>
+            <div className="loading-brand-copy">
+              <span className="loading-kicker">Unfoldoc</span>
+              <h1>Loading</h1>
+              <p>GitHub-native docs and bundles are being prepared.</p>
+            </div>
+          </div>
+
+          <div className="loading-status-row">
+            <span className="loading-dot" aria-hidden="true" />
+            <span>{loadingStatus}</span>
+          </div>
+
+          <div className="loading-status-grid" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+
+          <div className="loading-source-line">
+            {sourceConfig?.label ?? DEFAULT_SOURCE_URL.replace(/^https?:\/\//, "")}
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (initializing || documentsLoading) {
+    return renderLoadingScreen();
+  }
+
   if (!sourceConfig) {
     return (
       <main className="setup-shell">
         <section className="setup-card">
           <div className="setup-brand">
-            <img className="brand-mark brand-mark-setup" src="/logo-128.png" alt="" aria-hidden="true" />
+            <a className="brand-link" href={UNFOLDOC_REPO_URL} target="_blank" rel="noreferrer" aria-label="Open Unfoldoc on GitHub">
+              <img className="brand-mark brand-mark-setup" src="/logo-128.png" alt="" aria-hidden="true" />
+            </a>
             <h1>Unfoldoc</h1>
           </div>
           <p className="setup-copy">
-            Enter a local folder or a GitHub repo URL. Unfoldoc will detect the source type, remember it, and only ask again if you reset it.
+            Paste a GitHub repo or repo subpath URL. Unfoldoc looks for <code>content.md</code> bundles and opens the latest one.
+          </p>
+          <p className="setup-copy">
+            Just checking it out? Leave this blank and press <strong>Load source</strong> to open the default demo repo.
           </p>
           <input
             className="setup-input"
             value={sourceInput}
             onChange={(event) => setSourceInput(event.target.value)}
-            placeholder="/Users/fran/projects/orbit/data/daily-digest or https://github.com/fsilavong/unfoldoc"
+            placeholder={DEFAULT_SOURCE_URL}
           />
-          <button type="button" className="setup-btn" onClick={() => void submitSource()} disabled={submittingSource}>
+          <button type="button" className="setup-btn" onClick={() => void submitSource()} disabled={submittingSource || sourceReadOnly}>
             {submittingSource ? "Loading…" : "Load source"}
           </button>
+          <p className="setup-hint">
+            To generate bundles like this, see <a href={UNFOLDOC_REPO_URL} target="_blank" rel="noreferrer">github.com/fsilavong/unfoldoc</a>.
+          </p>
+          {sourceReadOnly ? <p className="setup-copy">Source changes are disabled on this deployment.</p> : null}
           {error ? <p className="setup-error">{error}</p> : null}
         </section>
       </main>
@@ -708,7 +828,9 @@ export default function App() {
       <aside className={mobileNavOpen ? "left mobile-open" : "left"}>
         <div className="left-hdr">
           <div className="left-brand">
-            <img className="brand-mark brand-mark-sidebar" src="/logo-128.png" alt="" aria-hidden="true" />
+            <a className="brand-link" href={UNFOLDOC_REPO_URL} target="_blank" rel="noreferrer" aria-label="Open Unfoldoc on GitHub">
+              <img className="brand-mark brand-mark-sidebar" src="/logo-128.png" alt="" aria-hidden="true" />
+            </a>
             <div className="left-brand-copy">
               <h2>Unfoldoc</h2>
               <p>Document tree</p>
@@ -727,9 +849,11 @@ export default function App() {
             </div>
             <div className="source-card-title">{sourceConfig.label}</div>
           </div>
-          <button type="button" className="reset-btn" onClick={() => void resetSource()}>
-            Reset source
-          </button>
+          {!sourceReadOnly ? (
+            <button type="button" className="reset-btn" onClick={() => void resetSource()}>
+              Reset source
+            </button>
+          ) : null}
         </div>
 
         <div className="tree-scroll">
@@ -782,6 +906,20 @@ export default function App() {
               {drawer.kind === "markdown" ? (
                 <div className="drawer-markdown">
                   {renderMarkdown(drawer.markdown, drawer.sourcePath)}
+                </div>
+              ) : null}
+
+              {drawer.kind === "loading" ? (
+                <div className="drawer-code">
+                  <p className="info-label">loading</p>
+                  <p>Opening linked resource…</p>
+                </div>
+              ) : null}
+
+              {drawer.kind === "error" ? (
+                <div className="drawer-code">
+                  <p className="info-label">error</p>
+                  <pre>{drawer.message}</pre>
                 </div>
               ) : null}
 

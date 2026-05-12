@@ -50,6 +50,8 @@ artifact-folder/
 - Put the retrieved chunk text in the citation file itself
 - Put code, prompts, and source files under `sources/`
 - Use normal relative links only; do not invent custom citation syntax
+- Never emit absolute or machine-local paths such as `/Users/...`, `/home/...`, or `C:\...`; all links must be relative to the file being written
+- Never reconstruct links from absolute paths, repo-root paths, or output-directory metadata when a relative path is available or can be derived
 - Do not require `run:` for the document to be valid. Treat execution metadata as optional and external to the main writing contract
 - Do not describe tool calls, interactive previews, truncation in the chat UI, hidden prompts, ledgers, or other execution details in `content.md`
 - When a caller gives you a target output folder, write the bundle directly into that folder
@@ -142,12 +144,22 @@ When an agent writes source-level notes from fetched posts, RSS entries, abstrac
 When a final digest synthesizes outputs from other agents, cite the upstream agent artifacts directly instead of inventing new provenance:
 
 - Link to each upstream `content.md` with a normal relative markdown link
+- Use the provided relative link exactly as given when the caller supplies one; do not rewrite it from absolute or repo-rooted paths
 - Treat that upstream `content.md` as the source summary that supports the synthesis
 - Do not copy all upstream text into the final bundle unless needed
 - Keep final `content.md` as the only top-level narrative
-- Example final citation: `[Anthropic alignment summary](../../blog-digest/anthropic-alignment/content.md)`
+- Good: `[Alignment summary](../../blog-digest/anthropic-alignment/content.md)`
+- Bad: `[Alignment summary](/home/user/projects/myapp/data/blog-digest/anthropic-alignment/content.md)`
 
 This keeps drill-down intact: the reader can open the final digest, click into the source-agent summary, then follow that summary's own citations or source links.
+
+## Link validation
+
+Before finishing a bundle:
+
+- Check that every local markdown link is a relative path from the file being written, not an absolute or machine-local path
+- Reject links that start with `/`, a drive letter, or a user home directory pattern
+- For cross-bundle links, verify the path resolves from the current `content.md`, not from the repo root or the working directory of the writing agent
 
 ## Minimal example
 
